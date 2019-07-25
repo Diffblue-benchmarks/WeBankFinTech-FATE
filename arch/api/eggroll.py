@@ -14,63 +14,51 @@
 #  limitations under the License.
 #
 
-from arch.api.utils.log_utils import LoggerFactory
-from arch.api.utils import file_utils
 from typing import Iterable
-import uuid
-import os
 from arch.api import WorkMode, NamingPolicy
 from arch.api import RuntimeInstance
-from arch.api.core import EggRollContext
 
 
 def init(job_id=None, mode: WorkMode = WorkMode.STANDALONE, naming_policy: NamingPolicy = NamingPolicy.DEFAULT):
-    if RuntimeInstance.EGGROLL:
-        return
-    if job_id is None:
-        job_id = str(uuid.uuid1())
-        LoggerFactory.setDirectory()
-    else:
-        LoggerFactory.setDirectory(os.path.join(file_utils.get_project_base_directory(), 'logs', job_id))
-    RuntimeInstance.MODE = mode
-
-    eggroll_context = EggRollContext(naming_policy=naming_policy)
-    if mode == WorkMode.STANDALONE:
-        from arch.api.standalone.eggroll import Standalone
-        RuntimeInstance.EGGROLL = Standalone(job_id=job_id, eggroll_context=eggroll_context)
-    elif mode == WorkMode.CLUSTER:
-        from arch.api.cluster.eggroll import _EggRoll
-        from arch.api.cluster.eggroll import init as c_init
-        c_init(job_id, eggroll_context=eggroll_context)
-        RuntimeInstance.EGGROLL = _EggRoll.get_instance()
-    else:
-        from arch.api.cluster import simple_roll
-        simple_roll.init(job_id)
-        RuntimeInstance.EGGROLL = simple_roll.EggRoll.get_instance()
-    RuntimeInstance.EGGROLL.table("__federation__", job_id, partition=10)
+    from arch.api.table.table_manager import init
+    init(job_id=job_id, mode=mode, naming_policy=naming_policy)
 
 
-def table(name, namespace, partition=1, persistent=True, create_if_missing=True, error_if_exist=False, in_place_computing=False):
-    return RuntimeInstance.EGGROLL.table(name=name,
-                                         namespace=namespace,
-                                         partition=partition,
-                                         persistent=persistent,
-                                         in_place_computing=in_place_computing)
+def table(name, namespace,
+          partition=1,
+          persistent=True,
+          create_if_missing=True,
+          error_if_exist=False,
+          in_place_computing=False):
+    return RuntimeInstance.TABLE_MANAGER.table(name=name, namespace=namespace, partition=partition,
+                                               persistent=persistent, in_place_computing=in_place_computing,
+                                               create_if_missing=create_if_missing, error_if_exist=error_if_exist)
 
 
-def parallelize(data: Iterable, include_key=False, name=None, partition=1, namespace=None, persistent=False,
-                create_if_missing=True, error_if_exist=False, chunk_size=100000, in_place_computing=False):
-    return RuntimeInstance.EGGROLL.parallelize(data=data, include_key=include_key, name=name, partition=partition,
-                                               namespace=namespace,
-                                               persistent=persistent,
-                                               chunk_size=chunk_size,
-                                               in_place_computing=in_place_computing)
+def parallelize(data: Iterable,
+                include_key=False,
+                name=None,
+                partition=1,
+                namespace=None,
+                persistent=False,
+                create_if_missing=True,
+                error_if_exist=False,
+                chunk_size=100000,
+                in_place_computing=False):
+    return RuntimeInstance.TABLE_MANAGER.parallelize(
+        data=data, include_key=include_key, name=name, partition=partition,
+        namespace=namespace, persistent=persistent, chunk_size=chunk_size,
+        in_place_computing=in_place_computing, create_if_missing=create_if_missing, error_if_exist=error_if_exist)
+
 
 def cleanup(name, namespace, persistent=False):
-    return RuntimeInstance.EGGROLL.cleanup(name=name, namespace=namespace, persistent=persistent)
+    return RuntimeInstance.TABLE_MANAGER.cleanup(name=name, namespace=namespace, persistent=persistent)
 
+
+# noinspection PyPep8Naming
 def generateUniqueId():
-    return RuntimeInstance.EGGROLL.generateUniqueId()
+    return RuntimeInstance.TABLE_MANAGER.generateUniqueId()
+
 
 def get_job_id():
-    return RuntimeInstance.EGGROLL.job_id
+    return RuntimeInstance.TABLE_MANAGER.job_id

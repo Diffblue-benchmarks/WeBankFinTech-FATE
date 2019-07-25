@@ -21,9 +21,12 @@ class WorkMode(IntEnum):
     STANDALONE = 0
     CLUSTER = 1
     SIMPLE = 2
+    STANDALONE_SPARK = 3
+    CLUSTER_SPARK = 4
 
 
 class RuntimeInstance(object):
+    TABLE_MANAGER = None
     EGGROLL = None
     MODE = None
     FEDERATION = None

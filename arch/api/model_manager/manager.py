@@ -51,7 +51,7 @@ def read_model(buffer_type, proto_buffer, name, namespace):
 
 def get_model_table_partition_count():
     # todo: max size limit?
-    return 4 if RuntimeInstance.MODE == WorkMode.CLUSTER else 1
+    return 4 if RuntimeInstance.MODE == WorkMode.CLUSTER or RuntimeInstance.MODE == WorkMode.CLUSTER_SPARK else 1
 
 
 def test_model(role):

@@ -14,16 +14,11 @@
 #  limitations under the License.
 #
 
-from pyspark import RDD
-from pyspark.storagelevel import StorageLevel
+from arch.api.standalone.eggroll import _DTable
 
-STORAGE_LEVEL = StorageLevel.MEMORY_AND_DISK
-
-
-def materialize(rdd: RDD):
-    rdd.persist(STORAGE_LEVEL)
-    rdd.foreachPartition(lambda x: None)
-    return rdd
-
-
-__all__ = ["STORAGE_LEVEL", "materialize"]
+"""
+we not try to introduce Table wrapper for _DTable by implementing Table's apis.
+thanks to python's duck type, we simply alias EggRollTable to the proper _Dtable
+from eggroll.py in standalone/cluster
+"""
+EggRollTable = _DTable

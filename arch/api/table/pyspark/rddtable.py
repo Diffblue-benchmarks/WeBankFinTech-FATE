@@ -20,20 +20,33 @@ from pyspark import SparkContext
 
 from arch.api.table.pyspark import materialize, STORAGE_LEVEL
 from arch.api.table.table import Table
+from arch.api import RuntimeInstance
 
 
 class RDDTable(Table):
 
-    def __init__(self, rdd=None, storage=None, partitions=1, schema=None, mode_instance=None):
+    def __init__(self, rdd=None, storage=None, partitions=1, name=None, namespace=None):
 
         if rdd is None and storage is None:
             raise AssertionError("params rdd and storage are both None")
         super().__init__(storage, None)
         self._rdd = rdd
         self._partitions = partitions
-        self.schema = schema or {}
-        self.mode_instance = mode_instance
         self.storage = storage
+        self.schema = {}
+        self.name = name
+        self.namespace = namespace
+
+    # self._rdd should not be pickled since all transformer/action should be invoked in driver.
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        if "_rdd" in state:
+            del state["_rdd"]
+        return state
+
+    @staticmethod
+    def get_job_id():
+        return RuntimeInstance.TABLE_MANAGER.get_job_id()
 
     @property
     def rdd(self):
@@ -50,13 +63,6 @@ class RDDTable(Table):
                     .persist(STORAGE_LEVEL)
         return self._rdd
 
-    # self._rdd should not be pickled since all transformer/action should be invoked in driver.
-    def __getstate__(self):
-        state = dict(self.__dict__)
-        if "_rdd" in state:
-            del state["_rdd"]
-        return state
-
     @property
     def partitions(self):
         return self._partitions
@@ -66,12 +72,12 @@ class RDDTable(Table):
             lambda x: func(x[0], x[1]),
             preservesPartitioning=True)
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=self._partitions, mode_instance=self.mode_instance)
+        return RDDTable(rdd=rtn_rdd, partitions=self._partitions)
 
     def mapValues(self, func):
         rtn_rdd = self.rdd.mapValues(func)
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=self._partitions, mode_instance=self.mode_instance)
+        return RDDTable(rdd=rtn_rdd, partitions=self._partitions)
 
     def mapPartitions(self, func):
         rtn_rdd = self.rdd.mapPartitions(
@@ -80,7 +86,7 @@ class RDDTable(Table):
         rtn_rdd = materialize(rtn_rdd)
         #         rtn_rdd = rtn_rdd.zipWithUniqueId()
         #         rtn_rdd = rtn_rdd.map(lambda x: (x[1], x[0])).persist(StorageLevel.MEMORY_AND_DISK)
-        return RDDTable(rdd=rtn_rdd, partitions=self._partitions, mode_instance=self.mode_instance)
+        return RDDTable(rdd=rtn_rdd, partitions=self._partitions)
 
     def reduce(self, func):
         return self.rdd.values().reduce(func)
@@ -91,17 +97,17 @@ class RDDTable(Table):
         if func is not None:
             rtn_rdd = rtn_rdd.mapValues(lambda x: func(x[0], x[1]))
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=_partitions, mode_instance=self.mode_instance)
+        return RDDTable(rdd=rtn_rdd, partitions=_partitions)
 
     def glom(self):
         rtn_rdd = self.rdd.glom()
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions(), mode_instance=self.mode_instance)
+        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions())
 
     def sample(self, fraction, seed=None):
         rtn_rdd = self.rdd.sample(withReplacement=False, fraction=fraction, seed=seed)
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions(), mode_instance=self.mode_instance)
+        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions())
 
     def subtractByKey(self, other):
         raise NotImplementedError("subtractByKey is not implemented")
@@ -109,7 +115,7 @@ class RDDTable(Table):
     def filter(self, func):
         rtn_rdd = self.rdd.filter(func)
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions(), mode_instance=self.mode_instance)
+        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions())
 
     def union(self, other, func=lambda v1, v2: v1):
         raise NotImplementedError("union is not implemented")
@@ -122,22 +128,29 @@ class RDDTable(Table):
     """
 
     def count(self):
-        num = self.rdd.count()
-        return num
+        if self.storage:
+            return self.storage.count()
+        else:
+            return self.rdd.count()
 
     def collect(self, min_chunk_size=0, use_serialize=True):
         rtn_iterator = iter(self.rdd.collect())
         return rtn_iterator
 
+    # noinspection PyProtectedMember
     def save_as(self, name, namespace, partition=None, use_serialize=True, persistent=True):
         if partition is None:
             partition = self._partitions
-
         partition = min(partition, 50)
-        dup = self.mode_instance.dtable(name, namespace, partition,
-                                        persistent=persistent, use_serialize=use_serialize)
-
-        res = self.rdd.mapPartitions(lambda x: (dup.put_all(x),))
-        res.count()
-
+        dup = RuntimeInstance.TABLE_MANAGER.storage_table_manager\
+            ._table(name=name, namespace=namespace, partition=partition, persistent=persistent)
+        res = self.rdd.mapPartitions(lambda x: (1, dup.put_all(x)))
+        res.foreachPartition(lambda x: None)
         return dup
+
+    def for_remote(self):
+        if self.storage is None:
+            return self.save_as(str(uuid.uuid1()), self.get_job_id(), partition=self.partitions, persistent=False)
+        else:
+            # noinspection PyProtectedMember
+            return self.storage._dtable

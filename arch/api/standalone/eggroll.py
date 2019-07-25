@@ -132,8 +132,8 @@ def _open_env(path, write=False):
 
 
 def _get_db_path(*args):
-    return os.sep.join([Standalone.get_instance().data_dir, *args])
-
+    data_dir = os.path.join(file_utils.get_project_base_directory(), 'data')
+    return os.sep.join([data_dir, *args])
 
 def _get_env(*args, write=False):
     _path = _get_db_path(*args)
