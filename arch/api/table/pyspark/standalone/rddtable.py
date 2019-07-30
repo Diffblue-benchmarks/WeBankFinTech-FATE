@@ -15,24 +15,25 @@
 #
 
 import uuid
+from typing import Iterable
 
 from pyspark import SparkContext
 
+from arch.api import RuntimeInstance
+from arch.api.table.eggroll.standalone.eggroletable import EggRollTable
 from arch.api.table.pyspark import materialize, STORAGE_LEVEL
 from arch.api.table.table import Table
-from arch.api import RuntimeInstance
 
 
 class RDDTable(Table):
 
-    def __init__(self, rdd=None, storage=None, partitions=1, name=None, namespace=None):
+    def __init__(self, rdd=None, eggroll_table: EggRollTable = None, partitions=1, name=None, namespace=None):
 
-        if rdd is None and storage is None:
+        if rdd is None and eggroll_table is None:
             raise AssertionError("params rdd and storage are both None")
-        super().__init__(storage, None)
         self._rdd = rdd
         self._partitions = partitions
-        self.storage = storage
+        self.eggroll_table = eggroll_table
         self.schema = {}
         self.name = name
         self.namespace = namespace
@@ -50,17 +51,20 @@ class RDDTable(Table):
 
     @property
     def rdd(self):
-        if self._rdd is None:
-            if self.storage is None:
-                raise AssertionError("try create rdd from None storage")
-            elif self.storage.count() <= 0:
-                raise AssertionError("can't create rdd from empty storage")
-            else:
-                storage_iterator = self.storage.collect(use_serialize=True)
-                num_partition = self.storage.partitions()
-                self._rdd = SparkContext.getOrCreate() \
-                    .parallelize(storage_iterator, num_partition) \
-                    .persist(STORAGE_LEVEL)
+        if hasattr(self, "_rdd") and self._rdd is not None:
+            return self._rdd
+
+        if self.eggroll_table is None:
+            raise AssertionError("try create rdd from None storage")
+
+        if self.eggroll_table.count() <= 0:
+            raise AssertionError("can't create rdd from empty storage")
+
+        storage_iterator = self.eggroll_table.collect(use_serialize=True)
+        num_partition = self.eggroll_table.partitions()
+        self._rdd = SparkContext.getOrCreate() \
+            .parallelize(storage_iterator, num_partition) \
+            .persist(STORAGE_LEVEL)
         return self._rdd
 
     @property
@@ -72,12 +76,12 @@ class RDDTable(Table):
             lambda x: func(x[0], x[1]),
             preservesPartitioning=True)
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=self._partitions)
+        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions())
 
     def mapValues(self, func):
         rtn_rdd = self.rdd.mapValues(func)
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=self._partitions)
+        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions())
 
     def mapPartitions(self, func):
         rtn_rdd = self.rdd.mapPartitions(
@@ -86,18 +90,18 @@ class RDDTable(Table):
         rtn_rdd = materialize(rtn_rdd)
         #         rtn_rdd = rtn_rdd.zipWithUniqueId()
         #         rtn_rdd = rtn_rdd.map(lambda x: (x[1], x[0])).persist(StorageLevel.MEMORY_AND_DISK)
-        return RDDTable(rdd=rtn_rdd, partitions=self._partitions)
+        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions())
 
     def reduce(self, func):
         return self.rdd.values().reduce(func)
 
     def join(self, other, func=None):
-        _partitions = max(self._partitions, other.partitions)
+        _partitions = max(self.partitions, other.partitions)
         rtn_rdd = self.rdd.join(other.rdd, numPartitions=_partitions)
         if func is not None:
             rtn_rdd = rtn_rdd.mapValues(lambda x: func(x[0], x[1]))
         rtn_rdd = materialize(rtn_rdd)
-        return RDDTable(rdd=rtn_rdd, partitions=_partitions)
+        return RDDTable(rdd=rtn_rdd, partitions=rtn_rdd.getNumPartitions())
 
     def glom(self):
         rtn_rdd = self.rdd.glom()
@@ -123,34 +127,64 @@ class RDDTable(Table):
     def flatMap(self, func):
         raise NotImplementedError("flatMap is not implemented")
 
+    def collect(self, min_chunk_size=0, use_serialize=True):
+        if self.eggroll_table:
+            return self.eggroll_table.collect(min_chunk_size, use_serialize)
+        else:
+            return iter(self.rdd.collect())
+
     """
-    overwrite several storage api
+    storage api
     """
+
+    def put(self, k, v, use_serialize=True):
+        return self.eggroll_table.put(k, v, use_serialize)
+
+    def put_all(self, kv_list: Iterable, use_serialize=True, chunk_size=100000):
+        return self.eggroll_table.put_all(kv_list, use_serialize, chunk_size)
+
+    def get(self, k, use_serialize=True):
+        return self.eggroll_table.get(k, use_serialize)
+
+    def delete(self, k, use_serialize=True):
+        return self.eggroll_table.delete(k, use_serialize)
+
+    def destroy(self):
+        return self.eggroll_table.destroy()
+
+    def put_if_absent(self, k, v, use_serialize=True):
+        return self.eggroll_table.put_if_absent(k, v, use_serialize)
+
+    # noinspection PyPep8Naming
+    def take(self, n=1, keysOnly=False, use_serialize=True):
+        return self.eggroll_table.take(n, keysOnly, use_serialize)
+
+    # noinspection PyPep8Naming
+    def first(self, keysOnly=False, use_serialize=True):
+        return self.eggroll_table.first(keysOnly, use_serialize)
 
     def count(self):
-        if self.storage:
-            return self.storage.count()
+        if self.eggroll_table:
+            return self.eggroll_table.count()
         else:
             return self.rdd.count()
-
-    def collect(self, min_chunk_size=0, use_serialize=True):
-        rtn_iterator = iter(self.rdd.collect())
-        return rtn_iterator
 
     # noinspection PyProtectedMember
     def save_as(self, name, namespace, partition=None, use_serialize=True, persistent=True):
         if partition is None:
             partition = self._partitions
         partition = min(partition, 50)
-        dup = RuntimeInstance.TABLE_MANAGER.storage_table_manager\
-            ._table(name=name, namespace=namespace, partition=partition, persistent=persistent)
-        res = self.rdd.mapPartitions(lambda x: (1, dup.put_all(x)))
+        dup = RuntimeInstance.TABLE_MANAGER. \
+            table(name=name, namespace=namespace, partition=partition, persistent=persistent)
+
+        from arch.api.table.pyspark.standalone.rdd_func import _save_as_func
+        res = self.rdd.mapPartitions(_save_as_func(dup))
         res.foreachPartition(lambda x: None)
         return dup
 
     def for_remote(self):
-        if self.storage is None:
+        if self.eggroll_table is None:
             return self.save_as(str(uuid.uuid1()), self.get_job_id(), partition=self.partitions, persistent=False)
         else:
             # noinspection PyProtectedMember
-            return self.storage._dtable
+            return self.eggroll_table._dtable

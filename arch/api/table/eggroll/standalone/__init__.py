@@ -14,11 +14,16 @@
 #  limitations under the License.
 #
 
-from arch.api.standalone.eggroll import _DTable
 
-"""
-we not try to introduce Table wrapper for _DTable by implementing Table's apis.
-thanks to python's duck type, we simply alias EggRollTable to the proper _Dtable
-from eggroll.py in standalone/cluster
-"""
-EggRollTable = _DTable
+def _make_serializable(obj):
+    """
+    make obj with type :class:`arch.api.standalone.eggroll.Standalone`serializable by
+    implementing slot `__getstate__`, in which attribute `pool` is intercepted.
+    :param obj: obj of :class:`arch.api.standalone.eggroll.Standalone`
+    :return: same obj as that passed in, with a special implement of `__getstate__`
+    """
+    _dict = dict(obj.__dict__)
+    if "pool" in _dict:
+        del _dict["pool"]
+    obj.__getstate__ = lambda: _dict
+    return obj

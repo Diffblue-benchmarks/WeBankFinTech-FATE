@@ -61,4 +61,4 @@ def generateUniqueId():
 
 
 def get_job_id():
-    return RuntimeInstance.TABLE_MANAGER.job_id
+    return RuntimeInstance.TABLE_MANAGER.get_job_id()

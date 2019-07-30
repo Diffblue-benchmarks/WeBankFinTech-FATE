@@ -88,29 +88,29 @@ def get_data_table_meta(key, data_table_name, data_table_namespace):
     else:
         return None
 
-
-if __name__ == '__main__':
-    from arch.api import eggroll
-    import uuid
-    import random
-    job_id = str(uuid.uuid1().hex)
-    eggroll.init(job_id=job_id, mode=0)
-
-    table_name = "test_example"
-    table_namespace = "storage_test_example"
-
-    def gen_test_data(row_count, column_count):
-        for r in range(row_count):
-            k = uuid.uuid1().hex
-            v = ','.join([str(random.randint(1, 100)) for i in range(column_count - 1)])
-            yield k, v
-
-    data_table = save_data(gen_test_data(5, 10), name=table_name, namespace=table_namespace)
-
-    for k, v in data_table.collect():
-        print(k, v)
-
-    save_data_table_meta({"k1": {"t1": [1, 2]}}, data_table_name=table_name, data_table_namespace=table_namespace)
-    print(get_data_table_meta("k1", data_table_name=table_name, data_table_namespace=table_namespace))
-
+#
+# if __name__ == '__main__':
+#     from arch.api import eggroll
+#     import uuid
+#     import random
+#     job_id = str(uuid.uuid1().hex)
+#     eggroll.init(job_id=job_id, mode=0)
+#
+#     table_name = "test_example"
+#     table_namespace = "storage_test_example"
+#
+#     def gen_test_data(row_count, column_count):
+#         for r in range(row_count):
+#             k = uuid.uuid1().hex
+#             v = ','.join([str(random.randint(1, 100)) for i in range(column_count - 1)])
+#             yield k, v
+#
+#     data_table = save_data(gen_test_data(5, 10), name=table_name, namespace=table_namespace)
+#
+#     for k, v in data_table.collect():
+#         print(k, v)
+#
+#     save_data_table_meta({"k1": {"t1": [1, 2]}}, data_table_name=table_name, data_table_namespace=table_namespace)
+#     print(get_data_table_meta("k1", data_table_name=table_name, data_table_namespace=table_namespace))
+#
 
