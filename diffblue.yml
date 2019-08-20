@@ -176,12 +176,12 @@ phases:
       cover-only: file
 units:
  - target:
-   - dir: core/target/classes
+   - dir: eggroll/core/target/classes
      file: com/webank/ai/eggroll/core/utils/Configuration.class
-     sourceDir: core/src/main/java
+     sourceDir: eggroll/core/src/main/java
      sourceFile: com/webank/ai/eggroll/core/utils/Configuration.java
  - target:
-   - dir: core/target/classes
+   - dir: eggroll/core/target/classes
      file: com/webank/ai/eggroll/core/utils/ObjectTransform.class
-     sourceDir: core/src/main/java
+     sourceDir: eggroll/core/src/main/java
      sourceFile: com/webank/ai/eggroll/core/utils/ObjectTransform.java
